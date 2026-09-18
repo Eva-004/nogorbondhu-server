@@ -6,7 +6,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = process.env.MONGODB_URI;
 
 const client = new MongoClient(uri, {
@@ -21,6 +21,29 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
+   const db = client.db("nogorbondhu");
+   const departmentCollection = db.collection('departments');
+
+
+   app.post("/departments",async(req,res)=>{
+    const data = req.body;
+    console.log(data);
+    const departmentData = {
+        departmentName:data.departmentName,
+        description:data.description,
+        status:data.status || "active",
+        createdAt: new Date()
+    }
+    const result = await departmentCollection.insertOne(departmentData);
+    res.json(result);
+   });
+
+   app.get("/departments",async(req,res)=>{
+    const result = await departmentCollection.find({}).toArray();
+    res.json(result);
+   });
+   
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
