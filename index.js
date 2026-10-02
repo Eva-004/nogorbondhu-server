@@ -19,13 +19,13 @@ const client = new MongoClient(uri, {
   }
 });
 
-const transporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// const transporter = nodemailer.createTransport({
+//   service: "gmail",
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS,
+//   },
+// });
 
 async function run() {
   try {
@@ -35,6 +35,7 @@ async function run() {
     const departmentCollection = db.collection('departments');
     const authorityCollection = db.collection('authorities');
     const rolesCollection = db.collection('roles');
+    const problemCategoriesCollection = db.collection('problemCategories');
 
     app.post("/departments", async (req, res) => {
       const data = req.body;
@@ -107,7 +108,37 @@ async function run() {
       res.json(result);
     });
 
+    app.post("/problemCategories", async (req, res) => {
+      const data = req.body;
 
+      console.log(data);
+
+      const problemCategoryData = {
+        categoryName: data.categoryName,
+        description: data.description,
+        departmentId: data.departmentId,
+        departmentName: data.departmentName,
+        authorityId: data.authorityId,
+        authorityName: data.authorityName,
+        status: data.status || "active",
+        createdAt: new Date()
+      };
+
+      const result = await problemCategoriesCollection.insertOne(
+        problemCategoryData
+      );
+
+      res.json(result);
+    });
+
+    app.get("/problemCategories", async (req, res) => {
+      const result = await problemCategoriesCollection
+        .find()
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.json(result);
+    });
 
 
     // Send a ping to confirm a successful connection
