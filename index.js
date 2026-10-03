@@ -107,6 +107,31 @@ async function run() {
 
       res.json(result);
     });
+    app.post("/roles", async (req, res) => {
+      const data = req.body;
+
+      const roleData = {
+        name: data.name,
+        slug: data.slug,
+        permissions: data.permissions,
+        isActive: data.isActive ?? true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      const result = await rolesCollection.insertOne(roleData);
+
+      res.json(result);
+    });
+
+    app.get("/roles", async (req, res) => {
+      const result = await rolesCollection
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.json(result);
+    });
 
     app.post("/problemCategories", async (req, res) => {
       const data = req.body;
@@ -139,6 +164,8 @@ async function run() {
 
       res.json(result);
     });
+
+
 
 
     // Send a ping to confirm a successful connection
