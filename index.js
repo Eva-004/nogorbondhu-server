@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const multer = require("multer");
 require("dotenv").config();
 
 const app = express();
@@ -27,6 +28,67 @@ const client = new MongoClient(uri, {
 //   },
 // });
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ["image/jpeg", "image/png", "image/jpg"];
+
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only JPG, JPEG and PNG images are allowed"));
+    }
+  },
+});
+
+app.post("/upload-image", upload.single("image"), async (req, res) => {
+    try {
+        
+
+        const formData = new FormData();
+
+        const blob = new Blob([req.file.buffer], {
+            type: req.file.mimetype,
+        });
+
+        formData.append("image", blob, req.file.originalname);
+
+        const response = await fetch(
+            `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`,
+            {
+                method: "POST",
+                body: formData,
+            }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            console.error("ImgBB error:", result);
+
+            return res.status(502).json({
+                message: result.error?.message || "ImgBB upload failed",
+            });
+        }
+
+        res.status(200).json({
+            message: "Image uploaded successfully",
+            url: result.data.url,
+        });
+    } catch (error) {
+    console.error("Image upload error:", error);
+    console.error("Error cause:", error.cause);
+
+    res.status(500).json({
+        message: error.message,
+        cause: error.cause?.message,
+    });
+    }
+});
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -36,6 +98,7 @@ async function run() {
     const authorityCollection = db.collection('authorities');
     const rolesCollection = db.collection('roles');
     const problemCategoriesCollection = db.collection('problemCategories');
+    const reportCollection = db.collection('reports');
 
     app.post("/departments", async (req, res) => {
       const data = req.body;
@@ -164,6 +227,23 @@ async function run() {
 
       res.json(result);
     });
+
+    app.post("/reports", async (req, res) => {
+      const data = req.body;
+
+      const reportData = {
+        ...data,
+        userId: data.userId,
+        evidence: data.evidence || [],
+        status: "pending",
+        createdAt: new Date(),
+      };
+
+      const result = await reportCollection.insertOne(reportData);
+
+      res.json(result);
+    });
+
 
 
 
