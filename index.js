@@ -244,6 +244,15 @@ async function run() {
       res.json(result);
     });
 
+     app.get("/reports", async (req, res) => {
+      const result = await reportCollection
+        .find({})
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.json(result);
+    });
+
 
 
 
