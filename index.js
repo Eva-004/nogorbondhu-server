@@ -45,48 +45,49 @@ const upload = multer({
 });
 
 app.post("/upload-image", upload.single("image"), async (req, res) => {
-    try {
-        
+  try {
 
-        const formData = new FormData();
 
-        const blob = new Blob([req.file.buffer], {
-            type: req.file.mimetype,
-        });
+    const formData = new FormData();
 
-        formData.append("image", blob, req.file.originalname);
+    const blob = new Blob([req.file.buffer], {
+      type: req.file.mimetype,
+    });
 
-        const response = await fetch(
-            `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`,
-            {
-                method: "POST",
-                body: formData,
-            }
-        );
+    formData.append("image", blob, req.file.originalname);
 
-        const result = await response.json();
+    const response = await fetch(
+      `https://api.imgbb.com/1/upload?key=${process.env.IMGBB_API_KEY}`,
+      {
+        method: "POST",
+        body: formData,
+        signal: AbortSignal.timeout(30000),
+      }
+    );
 
-        if (!response.ok || !result.success) {
-            console.error("ImgBB error:", result);
+    const result = await response.json();
 
-            return res.status(502).json({
-                message: result.error?.message || "ImgBB upload failed",
-            });
-        }
+    if (!response.ok || !result.success) {
+      console.error("ImgBB error:", result);
 
-        res.status(200).json({
-            message: "Image uploaded successfully",
-            url: result.data.url,
-        });
-    } catch (error) {
+      return res.status(502).json({
+        message: result.error?.message || "ImgBB upload failed",
+      });
+    }
+
+    res.status(200).json({
+      message: "Image uploaded successfully",
+      url: result.data.url,
+    });
+  } catch (error) {
     console.error("Image upload error:", error);
     console.error("Error cause:", error.cause);
 
     res.status(500).json({
-        message: error.message,
-        cause: error.cause?.message,
+      message: error.message,
+      cause: error.cause?.message,
     });
-    }
+  }
 });
 
 async function run() {
@@ -234,6 +235,7 @@ async function run() {
       const reportData = {
         ...data,
         userId: data.userId,
+        userName: data.userName,
         evidence: data.evidence || [],
         status: "pending",
         createdAt: new Date(),
@@ -244,15 +246,48 @@ async function run() {
       res.json(result);
     });
 
-     app.get("/reports", async (req, res) => {
-      const result = await reportCollection
-        .find({})
-        .sort({ createdAt: -1 })
-        .toArray();
+    
 
-      res.json(result);
+    app.get("/reports", async (req, res) => {
+
+        const { search, upazila, category, priority } = req.query;
+        const query = {};
+
+        if (search?.trim()) {
+          const searchRegex = {
+            $regex: search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            $options: "i",
+          };
+
+          query.$or = [
+            { title: searchRegex },
+            { userName: searchRegex },
+          ];
+        }
+
+        if (upazila) {
+          query["upazila.id"] = upazila;
+        }
+
+        if (category) {
+          query["category.id"] = category;
+        }
+
+        if (priority) {
+          query.priority = {
+            $regex: `^${priority}$`,
+            $options: "i",
+          };
+        }
+
+        const result = await reportCollection
+          .find(query)
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        res.json(result);
+     
     });
-
 
 
 
