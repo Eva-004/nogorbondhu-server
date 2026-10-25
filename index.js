@@ -100,6 +100,46 @@ async function run() {
     const rolesCollection = db.collection('roles');
     const problemCategoriesCollection = db.collection('problemCategories');
     const reportCollection = db.collection('reports');
+    const userCollection = db.collection('user');
+
+
+    app.get("/users", async (req, res) => {
+      const result = await userCollection.find({}).toArray();
+      res.json(result);
+    });
+
+    app.patch("/users/:id",async(req, res) => {
+      const { id } = req.params;
+      const { role, authority, department } = req.body;
+    
+      const updateData = {};
+    if (role !== undefined) {
+      updateData.role = role;
+    }
+
+    if (authority !== undefined) {
+      updateData.authority = authority;
+    }
+
+    if (department !== undefined) {
+      updateData.department = department;
+    }
+    const result = await userCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+
+    res.json(result);
+
+    });
+
+    app.delete("/users/:id",async(req, res) => {
+       const { id } = req.params;
+       const result = await userCollection.deleteOne(
+         { _id: new ObjectId(id) },
+       );
+       res.json(result);
+    })
 
     app.post("/departments", async (req, res) => {
       const data = req.body;
