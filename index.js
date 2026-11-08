@@ -20,13 +20,13 @@ const client = new MongoClient(uri, {
   }
 });
 
-// const transporter = nodemailer.createTransport({
-//   service: "gmail",
-//   auth: {
-//     user: process.env.EMAIL_USER,
-//     pass: process.env.EMAIL_PASS,
-//   },
-// });
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -61,7 +61,7 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
       {
         method: "POST",
         body: formData,
-        signal: AbortSignal.timeout(30000),
+        // signal: AbortSignal.timeout(10000),
       }
     );
 
@@ -94,6 +94,9 @@ async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
+
+    await transporter.verify();
+    console.log("Email server is ready!");
     const db = client.db("nogorbondhu");
     const departmentCollection = db.collection('departments');
     const authorityCollection = db.collection('authorities');
@@ -101,44 +104,44 @@ async function run() {
     const problemCategoriesCollection = db.collection('problemCategories');
     const reportCollection = db.collection('reports');
     const userCollection = db.collection('user');
-
+    const notificationCollection = db.collection("notifications");
 
     app.get("/users", async (req, res) => {
       const result = await userCollection.find({}).toArray();
       res.json(result);
     });
 
-    app.patch("/users/:id",async(req, res) => {
+    app.patch("/users/:id", async (req, res) => {
       const { id } = req.params;
       const { role, authority, department } = req.body;
-    
+
       const updateData = {};
-    if (role !== undefined) {
-      updateData.role = role;
-    }
+      if (role !== undefined) {
+        updateData.role = role;
+      }
 
-    if (authority !== undefined) {
-      updateData.authority = authority;
-    }
+      if (authority !== undefined) {
+        updateData.authority = authority;
+      }
 
-    if (department !== undefined) {
-      updateData.department = department;
-    }
-    const result = await userCollection.updateOne(
-      { _id: new ObjectId(id) },
-      { $set: updateData }
-    );
+      if (department !== undefined) {
+        updateData.department = department;
+      }
+      const result = await userCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+      );
 
-    res.json(result);
+      res.json(result);
 
     });
 
-    app.delete("/users/:id",async(req, res) => {
-       const { id } = req.params;
-       const result = await userCollection.deleteOne(
-         { _id: new ObjectId(id) },
-       );
-       res.json(result);
+    app.delete("/users/:id", async (req, res) => {
+      const { id } = req.params;
+      const result = await userCollection.deleteOne(
+        { _id: new ObjectId(id) },
+      );
+      res.json(result);
     })
 
     app.post("/departments", async (req, res) => {
@@ -268,6 +271,15 @@ async function run() {
 
       res.json(result);
     });
+    app.get("/problemCategories/:id", async (req, res) => {
+
+      const id = req.params.id;
+
+      const result = await problemCategoriesCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      res.json(result);
+    });
 
     app.post("/reports", async (req, res) => {
       const data = req.body;
@@ -286,47 +298,155 @@ async function run() {
       res.json(result);
     });
 
-    
+
 
     app.get("/reports", async (req, res) => {
 
-        const { search, upazila, category, priority } = req.query;
-        const query = {};
+      const { search, upazila, category, priority } = req.query;
+      const query = {};
 
-        if (search?.trim()) {
-          const searchRegex = {
-            $regex: search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-            $options: "i",
-          };
+      if (search?.trim()) {
+        const searchRegex = {
+          $regex: search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+          $options: "i",
+        };
 
-          query.$or = [
-            { title: searchRegex },
-            { userName: searchRegex },
-          ];
+        query.$or = [
+          { title: searchRegex },
+          { userName: searchRegex },
+        ];
+      }
+
+      if (upazila) {
+        query["upazila.id"] = upazila;
+      }
+
+      if (category) {
+        query["category.id"] = category;
+      }
+
+      if (priority) {
+        query.priority = {
+          $regex: `^${priority}$`,
+          $options: "i",
+        };
+      }
+
+      const result = await reportCollection
+        .find(query)
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.json(result);
+
+    });
+    app.get("/reports/:id", async (req, res) => {
+
+      const id = req.params.id;
+
+      const result = await reportCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      res.json(result);
+    });
+    app.patch("/reports/:id/status", async (req, res) => {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      const result = await reportCollection.updateOne(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            status,
+            updatedAt: new Date(),
+          },
         }
+      );
 
-        if (upazila) {
-          query["upazila.id"] = upazila;
+      const report = await reportCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (!report) {
+        return res.status(404).send({ message: "Report not found" });
+      }
+
+      const user = await userCollection.findOne({
+        _id: new ObjectId(report.userId),
+      });
+
+      const message =
+        status === "resolved"
+          ? `Good news! Your report "${report.title}" has been resolved.`
+          : status === "rejected"
+            ? `Your report "${report.title}" has been rejected. Please submit a new report.`
+            : `Your report "${report.title}" status is now ${status}.`;
+
+      const notification = {
+        userId: report.userId,
+        reportId: id,
+        title: "Report Status Updated",
+        message,
+        type: ["resolved", "rejected"].includes(status)
+          ? status
+          : "status_update",
+        isRead: false,
+        createdAt: new Date(),
+      };
+
+      await notificationCollection.insertOne(notification);
+
+      if (user?.email) {
+        try {
+          await transporter.sendMail({
+            from: `"NagarBondhu" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: "NagarBondhu - Report Status Updated",
+            text: `Hello ${user.name},
+            ${message}
+            Regards
+            NagarBondhu Team`,
+          });
+        } catch (error) {
+          console.error("Email sending failed:", error);
         }
+      }
 
-        if (category) {
-          query["category.id"] = category;
+      res.json(result);
+    });
+    app.get("/notifications/:userId", async (req, res) => {
+      const { userId } = req.params;
+
+      const notifications = await notificationCollection
+        .find({ userId })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      const unreadCount = notifications.filter(
+        (notification) => !notification.isRead
+      ).length;
+
+      res.json({
+        success: true,
+        unreadCount,
+        notifications,
+      });
+    });
+    app.patch("/notifications/:id/read", async (req, res) => {
+      const { id } = req.params;
+      const { userId } = req.body;
+
+      const result = await notificationCollection.updateOne(
+        { _id: new ObjectId(id), userId },
+        {
+          $set: { isRead: true },
         }
+      );
 
-        if (priority) {
-          query.priority = {
-            $regex: `^${priority}$`,
-            $options: "i",
-          };
-        }
-
-        const result = await reportCollection
-          .find(query)
-          .sort({ createdAt: -1 })
-          .toArray();
-
-        res.json(result);
-     
+      res.json({
+        success: true,
+        message: "Notification marked as read",
+      });
     });
 
 
